@@ -105,7 +105,29 @@ fn spawn_boundaries(mut commands: Commands, materials: Res<Materials>) {
     }
 }
 
-fn spawn_walls(mut commands: Commands, materials: Res<Materials>) {
+fn spawn_walls(
+    mut commands: Commands,
+    materials: Res<Materials>,
+    walls: Query<&Position, With<Wall>>,
+    players: Query<&Position, With<Player>>,
+) {
+    let mut target_position = Position { x: 0, y: 0 };
+    // Do not spawn on top of an existing wall or player
+    'outer: loop {
+        target_position.x = (random::<f32>() * ARENA_WIDTH as f32) as i32;
+        target_position.y = (random::<f32>() * ARENA_HEIGHT as f32) as i32;
+        for p in players.iter() {
+            if p == &target_position {
+                continue 'outer;
+            }
+        }
+        for p in walls.iter() {
+            if p == &target_position {
+                continue 'outer;
+            }
+        }
+        break;
+    }
     commands
         .spawn_bundle(SpriteBundle {
             material: materials.wall_material.clone(),
@@ -113,10 +135,7 @@ fn spawn_walls(mut commands: Commands, materials: Res<Materials>) {
             ..Default::default()
         })
         .insert(Wall)
-        .insert(Position {
-            x: (random::<f32>() * ARENA_WIDTH as f32) as i32,
-            y: (random::<f32>() * ARENA_HEIGHT as f32) as i32,
-        })
+        .insert(target_position)
         .insert(Size::square(0.8));
 }
 
@@ -216,7 +235,7 @@ fn validate_player_action(
                         y: pos.y - 1,
                     };
                     for w in walls.iter() {
-                        if target_position.x == w.x && target_position.y == w.y {
+                        if &target_position == w {
                             player.action = Action::Idle;
                         }
                     }
@@ -227,7 +246,7 @@ fn validate_player_action(
                         y: pos.y + 1,
                     };
                     for w in walls.iter() {
-                        if target_position.x == w.x && target_position.y == w.y {
+                        if &target_position == w {
                             player.action = Action::Idle;
                         }
                     }
@@ -238,7 +257,7 @@ fn validate_player_action(
                         y: pos.y,
                     };
                     for w in walls.iter() {
-                        if target_position.x == w.x && target_position.y == w.y {
+                        if &target_position == w {
                             player.action = Action::Idle;
                         }
                     }
@@ -249,7 +268,7 @@ fn validate_player_action(
                         y: pos.y,
                     };
                     for w in walls.iter() {
-                        if target_position.x == w.x && target_position.y == w.y {
+                        if &target_position == w {
                             player.action = Action::Idle;
                         }
                     }
