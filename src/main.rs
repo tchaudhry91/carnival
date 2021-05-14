@@ -48,17 +48,20 @@ struct Player {
     has_rock: bool,
 }
 struct Wall;
+struct Boundary;
 
 struct Materials {
     player_material: Handle<ColorMaterial>,
     wall_material: Handle<ColorMaterial>,
+    boundary_material: Handle<ColorMaterial>,
 }
 
 fn setup(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
     commands.insert_resource(Materials {
         player_material: materials.add(Color::rgb(0.7, 0.7, 0.7).into()),
-        wall_material: materials.add(Color::rgb(1., 0., 0.).into()),
+        wall_material: materials.add(Color::rgb(0.5, 0.5, 0.).into()),
+        boundary_material: materials.add(Color::rgb(1., 0., 0.).into()),
     });
 }
 
@@ -97,10 +100,11 @@ fn spawn_boundaries(mut commands: Commands, materials: Res<Materials>) {
     while let Some(p) = boundary_positions.pop() {
         commands
             .spawn_bundle(SpriteBundle {
-                material: materials.wall_material.clone(),
+                material: materials.boundary_material.clone(),
                 sprite: Sprite::new(Vec2::new(20.0, 20.0)),
                 ..Default::default()
             })
+            .insert(Boundary)
             .insert(Wall)
             .insert(p)
             .insert(Size::square(0.8));
@@ -116,8 +120,8 @@ fn spawn_walls(
     let mut target_position = Position { x: 0, y: 0 };
     // Do not spawn on top of an existing wall or player
     'outer: loop {
-        target_position.x = (random::<f32>() * ARENA_WIDTH as f32) as i32;
-        target_position.y = (random::<f32>() * ARENA_HEIGHT as f32) as i32;
+        target_position.x = 1 + (random::<f32>() * (ARENA_WIDTH - 2) as f32) as i32;
+        target_position.y = 1 + (random::<f32>() * (ARENA_HEIGHT - 2) as f32) as i32;
         for p in players.iter() {
             if p == &target_position {
                 continue 'outer;
@@ -432,7 +436,7 @@ fn player_move_action(mut player_positions: Query<(&mut Position, &mut Player)>)
 fn player_dig_action(
     mut commands: Commands,
     mut players: Query<(&Position, &mut Player)>,
-    walls: Query<(Entity, &Position, &Wall)>,
+    mut walls: Query<(Entity, &Position, (With<Wall>, Without<Boundary>))>,
 ) {
     for (position, mut player) in players.iter_mut() {
         let mut pos = *position;
@@ -451,7 +455,7 @@ fn player_dig_action(
                     pos.x += 1;
                 }
             }
-            for (e, wpos, _w) in walls.iter() {
+            for (e, wpos, _w) in walls.iter_mut() {
                 if wpos == &pos {
                     commands.entity(e).despawn();
                     player.has_rock = true;
