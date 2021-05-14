@@ -45,6 +45,7 @@ pub enum Direction {
 struct Player {
     face_direction: Direction,
     action: Action,
+    has_rock: bool,
 }
 struct Wall;
 
@@ -71,6 +72,7 @@ fn spawn_player(mut commands: Commands, materials: Res<Materials>) {
         .insert(Player {
             action: Action::Idle,
             face_direction: Direction::Up,
+            has_rock: false,
         })
         .insert(Position { x: 1, y: 1 })
         .insert(Size::square(0.5));
@@ -170,7 +172,9 @@ pub struct PlayerActionPlugin;
 pub enum PlayerActions {
     Input,
     InputValidation,
-    Action,
+    MoveAction,
+    DigAction,
+    BuildAction,
 }
 
 impl Plugin for PlayerActionPlugin {
@@ -188,9 +192,25 @@ impl Plugin for PlayerActionPlugin {
                     validate_player_action
                         .system()
                         .label(PlayerActions::InputValidation)
-                        .before(PlayerActions::Action),
+                        .before(PlayerActions::MoveAction),
                 )
-                .with_system(player_action.system().label(PlayerActions::Action)),
+                .with_system(
+                    player_move_action
+                        .system()
+                        .label(PlayerActions::MoveAction)
+                        .before(PlayerActions::DigAction),
+                )
+                .with_system(
+                    player_dig_action
+                        .system()
+                        .label(PlayerActions::DigAction)
+                        .before(PlayerActions::BuildAction),
+                )
+                .with_system(
+                    player_build_action
+                        .system()
+                        .label(PlayerActions::BuildAction),
+                ),
         );
     }
 }
@@ -218,6 +238,14 @@ fn player_input(keyboard_input: Res<Input<KeyCode>>, mut player_positions: Query
         if keyboard_input.just_pressed(KeyCode::H) || keyboard_input.just_pressed(KeyCode::Left) {
             p.face_direction = Direction::Left;
             p.action = Action::Move;
+        }
+        if keyboard_input.just_pressed(KeyCode::Space) {
+            if !p.has_rock {
+                p.action = Action::Dig;
+            }
+            if p.has_rock {
+                p.action = Action::Build;
+            }
         }
     }
 }
@@ -274,17 +302,115 @@ fn validate_player_action(
                     }
                 }
             },
-            Action::Dig => {}
-            Action::Build => {}
+            Action::Dig => match player.face_direction {
+                Direction::Down => {
+                    let target_position = Position {
+                        x: pos.x,
+                        y: pos.y - 1,
+                    };
+                    player.action = Action::Idle;
+                    for w in walls.iter() {
+                        if &target_position == w {
+                            player.action = Action::Dig;
+                            break;
+                        }
+                    }
+                }
+                Direction::Up => {
+                    let target_position = Position {
+                        x: pos.x,
+                        y: pos.y + 1,
+                    };
+                    player.action = Action::Idle;
+                    for w in walls.iter() {
+                        if &target_position == w {
+                            player.action = Action::Dig;
+                            break;
+                        }
+                    }
+                }
+                Direction::Left => {
+                    let target_position = Position {
+                        x: pos.x - 1,
+                        y: pos.y,
+                    };
+                    player.action = Action::Idle;
+                    for w in walls.iter() {
+                        if &target_position == w {
+                            player.action = Action::Dig;
+                            break;
+                        }
+                    }
+                }
+                Direction::Right => {
+                    let target_position = Position {
+                        x: pos.x + 1,
+                        y: pos.y,
+                    };
+                    player.action = Action::Idle;
+                    for w in walls.iter() {
+                        if &target_position == w {
+                            player.action = Action::Dig;
+                            break;
+                        }
+                    }
+                }
+            },
+            Action::Build => match player.face_direction {
+                Direction::Down => {
+                    let target_position = Position {
+                        x: pos.x,
+                        y: pos.y - 1,
+                    };
+                    for w in walls.iter() {
+                        if &target_position == w {
+                            player.action = Action::Idle;
+                        }
+                    }
+                }
+                Direction::Up => {
+                    let target_position = Position {
+                        x: pos.x,
+                        y: pos.y + 1,
+                    };
+                    for w in walls.iter() {
+                        if &target_position == w {
+                            player.action = Action::Idle;
+                        }
+                    }
+                }
+                Direction::Left => {
+                    let target_position = Position {
+                        x: pos.x - 1,
+                        y: pos.y,
+                    };
+                    for w in walls.iter() {
+                        if &target_position == w {
+                            player.action = Action::Idle;
+                        }
+                    }
+                }
+                Direction::Right => {
+                    let target_position = Position {
+                        x: pos.x + 1,
+                        y: pos.y,
+                    };
+                    for w in walls.iter() {
+                        if &target_position == w {
+                            player.action = Action::Idle;
+                        }
+                    }
+                }
+            },
             Action::Idle => {}
         }
     }
 }
 
-fn player_action(mut player_positions: Query<(&mut Position, &mut Player)>) {
+fn player_move_action(mut player_positions: Query<(&mut Position, &mut Player)>) {
     for (mut pos, mut player) in player_positions.iter_mut() {
-        match player.action {
-            Action::Move => match player.face_direction {
+        if player.action == Action::Move {
+            match player.face_direction {
                 Direction::Down => {
                     pos.y -= 1;
                 }
@@ -297,12 +423,79 @@ fn player_action(mut player_positions: Query<(&mut Position, &mut Player)>) {
                 Direction::Right => {
                     pos.x += 1;
                 }
-            },
-            Action::Dig => {}
-            Action::Build => {}
-            Action::Idle => {}
+            }
+            player.action = Action::Idle;
         }
-        player.action = Action::Idle;
+    }
+}
+
+fn player_dig_action(
+    mut commands: Commands,
+    mut players: Query<(&Position, &mut Player)>,
+    walls: Query<(Entity, &Position, &Wall)>,
+) {
+    for (position, mut player) in players.iter_mut() {
+        let mut pos = *position;
+        if player.action == Action::Dig {
+            match player.face_direction {
+                Direction::Down => {
+                    pos.y -= 1;
+                }
+                Direction::Up => {
+                    pos.y += 1;
+                }
+                Direction::Left => {
+                    pos.x -= 1;
+                }
+                Direction::Right => {
+                    pos.x += 1;
+                }
+            }
+            for (e, wpos, _w) in walls.iter() {
+                if wpos == &pos {
+                    commands.entity(e).despawn();
+                    player.has_rock = true;
+                }
+            }
+            player.action = Action::Idle;
+        }
+    }
+}
+
+fn player_build_action(
+    mut commands: Commands,
+    materials: Res<Materials>,
+    mut players: Query<(&Position, &mut Player)>,
+) {
+    for (position, mut player) in players.iter_mut() {
+        let mut pos = *position;
+        if player.action == Action::Build {
+            match player.face_direction {
+                Direction::Down => {
+                    pos.y -= 1;
+                }
+                Direction::Up => {
+                    pos.y += 1;
+                }
+                Direction::Left => {
+                    pos.x -= 1;
+                }
+                Direction::Right => {
+                    pos.x += 1;
+                }
+            }
+            commands
+                .spawn_bundle(SpriteBundle {
+                    material: materials.wall_material.clone(),
+                    sprite: Sprite::new(Vec2::new(20.0, 20.0)),
+                    ..Default::default()
+                })
+                .insert(Wall)
+                .insert(pos)
+                .insert(Size::square(0.8));
+            player.has_rock = false;
+            player.action = Action::Idle;
+        }
     }
 }
 
